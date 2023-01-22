@@ -1,0 +1,31 @@
+---
+title: "Stats computationnelles"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+# Classification ascendante hiérarchique
+
+#### Mesure de qualité de répartition
+
+- *Le plus petit lien du lien minimum entre les classes*. On peut alors montrer que le critère du lien minimum est celui qui maximise ce dernier critère pour $k$ classes. 
+
+- *Le plus grand diamètre*. Ce critère est minimisé par l'algorithme du lien maximum (mais sensible aux valeurs aberrantes)
+
+- *$\frac{I_{inter}}{I_{total}}$*. Minimiser l'inertie intra (equivalent à maximiser l'inertie inter). Plus ce critère est élevé, mieux la partition permet de classifier. Pour être directement comparable, il faut fixer le nombre de classes, car ce critère croît avec le nombre de classees. Il est approximativement maximiser par le critère de Ward. 
+
+
+
+
+
+
+
+$ \frac{16}{20}$
+
+
+
+
+
+
+
