@@ -1,0 +1,169 @@
+---
+title: "Séries temporelles"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+<br>
+\
+
+# Contexte 
+
+On cherche à savoir si le PGD est stationnaire. Si oui, alors :
+
+- $E(y)$ ne dépend pas du temps\
+- $Var(y)$ finie\
+- Autocovariance entre $Y_t$ et $Y_{t-h}$
+
+S'il n'est pas stationnaire, on change la série pour qu'elle le devienne et qu'on puisse faire notre estimation. Pour savoir s'il est stationnaire, on fait des tests de racines unitaires. 
+
+Tendance TS : $X_t = \alpha_0 + \alpha_1 X_{t-1} + \varepsilon_t$
+
+Tendance DS : $X_t = X_{t-1} + \varepsilon_t$
+
+
+
+
+
+
+<br>
+\
+
+# Introduction
+
+Quel estimateur utiliser pour estimer $y_t = \beta_0 + \beta_1 x_t + \varepsilon_t$ ?
+
+- Pour un PGD stationnaire, MCO ok. 
+
+- Si $x_t$ et $y_t$ sont DS, alors elles peuvent être cointégrées si c'est le cas --> MCE (modèle à correction d'erreurs, pour 2 séries uniquement). Si elles ne sont pas cointégrées (MCE impossible), mais quand même DS, alors on doit stationnariser les 2 séries et on emploie les MCO sur les séries stationnarisées. 
+
+<br>
+\
+
+### Première étape : créer un chronogramme de la série étudiée
+
+On cherche à détecter la présence (ou non) de 3 effets :
+
+**Tendance**\
+Pour savoir si une série a une tendance, on compare le premier et le dernier point et on regarde si la tendance est haussière ou baissière. On regarde ensuite si la série fluctue autour d'une valeur, nulle ou non.
+
+**Effets saisonniers**\
+On cherche à savoir si la série à des effets saisonniers (qui se reproduisent tous les ans). Cet effet doit se répéter plusieurs fois dans l'année et graphiquement doit se repérer par des pics réguliers. Si on en détecte, on les enlève pour la modélisation et on les remet à la fin. 
+
+**Hétéroscédasticité**\
+Est ce que la variance varie dans le temps ? On essaie d'insérer toutes les valeurs de la série entre 2 droites, et si ces dernières sont parallèles, alors la variance est finie (homoscedasticité).
+
+On distingue 2 types de modèles
+
+Modèle additif\
+$x_t = m_t + s_t + u_t$
+
+Modèle multiplicatif\
+$x_t = m_t s_t u_t$
+
+Avec :\
+- $m_t$ la tendance\
+- $s_t$ l'effet saisonnier\
+- $u_t =$ un bruit où $E(u_t) = 0$\
+
+<br>
+\
+
+### Exemple d'une série temporelle
+
+
+```{r fig.width=10, message=FALSE, warning=FALSE, include=FALSE}
+library(urca)
+library(ggplot2)
+library(dygraphs)
+library(xts)          
+library(tidyverse)
+library(lubridate)
+library(hrbrthemes)
+library(dplyr)
+library(patchwork)
+library(scales)
+```
+
+##### Chronogramme de la température moyenne à Delhi entre 2013 et 2017
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=10}
+data = read.csv("climate.csv")
+
+don = xts(x = data$meantemp, order.by = as.Date(data$date))
+p = dygraph(don) %>%
+  dyOptions(labelsUTC = TRUE, fillGraph=TRUE, fillAlpha=0.1, drawGrid = FALSE, colors="#D8AE5A") %>%
+  dyRangeSelector() %>%
+  dyCrosshair(direction = "vertical") %>%
+  dyHighlight(highlightCircleSize = 5, highlightSeriesBackgroundAlpha = 0.2, hideOnMouseOut = FALSE)  %>%
+  dyRoller(rollPeriod = 1)
+p
+```
+
+\
+<br>
+
+##### Décomposition de : l'effet saisonnier, la tendance et le bruit
+
+Pour cela, on lisse notre série en calculant les moyennes mobiles puis en les retirant de cette dernière. Ensuite, l'effet saisonnier est calculée en faisant la moyenne, pour chaque unité de temps, de toutes les périodes. L"effet saisonnier est ensuite centrée. Enfin, le bruit est déterminée en supprimant la tendance et l'effet saisonnier de la série originale.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=15}
+
+decomposition = decompose(ts(data$meantemp, deltat = 1/365), type = "additive")
+
+time = as.Date(data$date)
+season = decomposition$seasonal
+trend = decomposition$trend
+random = decomposition$random
+decomp = data.frame(time, season, trend, random)
+
+plot1 = ggplot(decomp, aes(x=time, y=trend)) +
+  ggtitle("Trend") + geom_line(col="green") + theme_ipsum()
+plot1
+
+plot2 = ggplot(decomp, aes(x=time, y=season)) +
+  ggtitle("Season effect") + geom_line(col="darkblue") + theme_ipsum()
+plot2
+
+plot3 = ggplot(decomp, aes(x=time, y=random)) +
+  ggtitle("Randomness") + geom_line(col="red") + theme_ipsum()
+plot3
+``` 
+
+##### Monthplot des températures moyennes
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=15}
+data$date = as.Date(data$date, "%Y-%m-%d")
+
+monthplot(data$meantemp,
+          main="Monthplot",
+          ylab="Average temperature in Delhi",
+          box=FALSE,
+          labels = c("Jan", "Fev", "Mar", "Avr", "Mai", "Jun", "Jui", "Aou", "Sep", "Oct", "Nov", "Dec"),
+          col = "darkblue", col.base = "red")
+```
+
+# ***IANIS T NUL***
+
+
+
+
+
+
+
+
+
+
+\
+\
+\
+\
+\
+<br>
+<br>
+<br>
+<br>
+
+
