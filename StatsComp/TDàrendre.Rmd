@@ -1,0 +1,439 @@
+---
+title: "StatsComputationnelles TP à rendre"
+author: "Erwan Judic, Barbier--Darnal Joseph"
+output: html_document
+---
+
+```{r start session, message=FALSE, warning=FALSE, include=FALSE}
+#clean environment
+rm(list=ls())
+
+#packages used
+library(FactoMineR)
+library(factoextra)
+library(ClustOfVar)
+library(ggplot2)
+library(ggpubr)
+```
+
+
+<br>
+<br>
+
+# Exercice 3 
+
+<br>
+
+### 1 - Import des données
+
+```{r open dataset, echo=TRUE, message=FALSE, warning=FALSE}
+data = read.table("fromage.txt", header = TRUE, row.names = 1)
+dim(data)
+```
+
+
+
+<br>
+
+### 2 -  Ecart-type des variables
+
+```{r compute std, echo=TRUE, message=FALSE, warning=FALSE}
+round(apply(data, 2, sd),2)
+```
+
+Les variables étudiées ne possèdent pas de variance similaire et vont devoir être mises sur une même échelle.
+
+
+
+<br>
+
+### 3 - Normalisation des données
+
+```{r scale features, echo=TRUE, message=FALSE, warning=FALSE}
+#center
+data_scaled = scale(data, scale = FALSE)
+
+#uncorrected std function
+n = nrow(data)
+correction = sqrt((n-1)/n)
+std = function(var){
+  return(sd(var)*correction)
+}
+
+#save uncorrected stds
+stds = apply(data, 2, std)
+
+#reduce
+for (i in seq(1, ncol(data))){
+  data_scaled[,i] = data_scaled[,i] / stds[i]
+}
+
+#convert to dataframe
+data_scaled = as.data.frame(data_scaled)
+
+#compute std
+apply(data_scaled, 2, std)
+
+#compute mean
+apply(data_scaled, 2, mean)
+```
+
+Les nouvelles moyennes sont de $0$ et les nouveaux écart-types sont égaux à $1$.
+
+
+
+<br>
+
+### 4 - CAH de Ward
+
+```{r CAH Ward, echo=TRUE, message=FALSE, warning=FALSE}
+#compute the distances matrix
+dist_matrix = dist(data_scaled)
+
+#cluster the data set using Ward metric
+tree = hclust(dist_matrix^2/(2*n), method="ward.D")
+
+#compute heights sum
+sum(tree$height)
+```
+
+L'inertie totale du jeu de données centré-réduit étant égale à la somme des variances des variables, elle est ici de $9$. La mesure de la hauteur lorsque l'on agrége 2 classes avec la métrique de Ward étant l'inertie inter-classe (des classes que l'on agrége), on peut alors montrer que la somme des hauteurs du dendogramme est l'inertie totale. Dans notre cas, on a
+$$\sum_{i=1}^p Var(v_i) = 9$$ 
+car la variance de la $i^{ème}$ variable (notée $v_i$) est $1$ et que $p=9$.
+
+
+<br>
+
+### 5 - Dendogramme et graphique des éboulis
+
+```{r graph, echo=TRUE, message=FALSE, warning=FALSE, fig.width=12, fig.height=6}
+#scree graph
+barplot(sort(tree$height, decreasing = TRUE), col="darkblue")
+```
+
+On peut proposer un choix d'une répartition en 5 classes puisque passer de 5 à 6 classes n'apporte presque aucune information. La valeur de 5 semble être un seuil pertinent dans l'objectif de classes cohérentes. 
+
+```{r graphs, echo=TRUE, message=FALSE, warning=FALSE, fig.width=14, fig.height=10}
+#plot the tree
+plot(tree, hang=-1, main="Dendrogramme de Ward", xlab="")
+
+#add labels for branches
+labels = as.character(1:nrow(data_scaled))
+labels[tree$order] = rownames(data_scaled)[tree$order]
+rect.hclust(tree, k=5, border="red")
+```
+
+
+
+<br>
+
+### 6 - Pourcentage d'inertie expliquée
+
+```{r explained inertia, echo=TRUE, message=FALSE, warning=FALSE}
+#calculate the percentage of explained inertia for the partition in 5 groups
+explained_intertia = sum(sort(tree$height, decreasing = TRUE)[1:5])
+total_inertia = sum(tree$height)
+explained_intertia / total_inertia
+```
+
+
+
+<br>
+
+### 7 - ACP
+
+```{r PCA, echo=TRUE, message=FALSE, warning=FALSE, fig.width=14, fig.height=8}
+#add a group feature to the data set
+group_labels = cutree(tree, k = 5)
+data_scaled$group = group_labels
+data_scaled$group = as.factor(data_scaled$group)
+results = PCA(data_scaled, quali.sup=10, graph = FALSE)
+
+#eigenvalues
+results$eig
+
+#ind projection
+fviz_pca_ind(results, axes = c(1,2),
+             col.ind = data_scaled$group,
+             legend.title = "Groupes", repel = TRUE)
+
+#var projection
+fviz_pca_var(results, axes = c(1,2),
+             repel = TRUE)
+```
+
+**Interprétation de la partition en 5 classes:**\
+- Le groupe 1 représente les fromages plutôt forts\
+- Le groupe 2 ne semblent pas représenter une classe particulière de fromage (babybel assez différent du reblochon, lui-même assez différent du cheddar, etc)\
+- Le groupe 3 représente les fromages à pâte dure et caloriques (variables protéine, lipide et calorie proches du cluster)\
+- Le groupe 4 représente les fromages fondants, plutôt riches en folates et retinol (ces variables sont cependant relativement mal projetées)\
+- Le groupe 5 représente les fromages frais relativement peu caloriques et peu salés
+
+
+<br>
+
+### 8 - catdes
+
+```{r catdes, echo=TRUE, message=FALSE, warning=FALSE}
+#add the group feature to the unscaled data set
+group_labels = cutree(tree, k = 5)
+data$group = group_labels
+data$group = as.factor(data$group)
+
+#compute the catdes function and print results for the 5th cluster
+res = catdes(data, num.var = 10)
+res5 = res$quanti$`5`
+res5
+
+#compute the p-value associated to magnesium
+n = 29 #sample size
+nk = 4 #number of cheese in class k
+s2 = 11.121532**2 #variance
+
+#the magnesium statistics
+denominateur = sqrt(s2/(nk) * (n-nk)/(n-1))
+mean_magn = 11.250
+overall_mean = 26.96552
+stat_magn = (mean_magn - overall_mean) / denominateur
+stat_magn
+
+#pvalue
+pnorm(res5[1,1])*2
+pnorm(stat_magn)*2
+```
+
+La fonction catdes va afficher uniquement les variables dont la p-value est inférieur à 0.05 (valeur par défaut).
+
+La classe 5 regroupe les fromages riches en lipides, en calories et en cholesterol.
+
+
+
+<br>
+<br>
+
+# Exercice 4
+
+<br>
+
+### 1 - Standardisation des données
+
+La standardisation de nos données va permettre de s'assurer que les variables sont toutes une même échelle. En effet, ne pas le faire revient à donner naturellement un poids à chaque variable proportionnel à l'échelle de la variance de cette dernière. 
+
+<br>
+
+### 2 - Clustering sur données normées et non-normées
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, fig.width=16}
+#clustering on original data
+data = USArrests
+n = nrow(data)
+distance = dist(data)
+tree = hclust(distance^2/(2*n), method="ward.D")
+plot1 = fviz_dend(tree, main = "Clustering (Ward) sur variables non-normées")
+
+#clustering on scaled data
+data_scaled = scale(data)
+data_scaled = as.data.frame(data_scaled)
+distance_scaled = dist(data_scaled)
+tree_scaled = hclust(distance_scaled^2/(2*n), method="ward.D")
+plot2 = fviz_dend(tree_scaled, main = "Clustering (Ward) sur variables normées")
+
+#plot graphs
+ggarrange(plot1, plot2, ncol = 2)
+```
+
+<br>
+
+
+### 3 - ACP non-normée
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, fig.width=14, fig.height=6}
+#add a group feature to the data set
+group_labels = cutree(tree, k = 5)
+data$group = group_labels
+data$group = as.factor(data$group)
+
+#PCA
+result = PCA(data,
+             scale.unit = FALSE,
+             graph = FALSE,
+             quanti.sup = 3,
+             quali.sup = 5)
+
+#ind projection
+plot1 = fviz_pca_ind(result,
+                     ylim=c(-80,80),
+                     col.ind = data$group,
+                     legend.title = "Groupes")
+
+#var projection
+plot2 = fviz_pca_var(result,
+                     ylim=c(-20,20))
+
+#plot graphs
+ggarrange(plot1, plot2, ncol = 2)
+```
+
+Le graphique de projection des variables non-normées nous montre que la première composante principale est très corrélée à la variable assault (i.e. mesure plus ou moins la même chose). On pourrait montrer que cela était prévisible étant donné que cette même variable est celle avec la variance la plus élevée ainsi qu'en calculant la corrélation entre la variable assault et la première composante principale.
+
+Cela implique que la position des Etats sur cet axe représente principalement leur fréquence relative en terme d'arrestations pour des aggressions: les Etats les plus avancés sur cet axe sont les Etats avec le plus d'aggressions par habitants, et inversement. On se rend alors compte que la classification réalisée a été principalement réalisée à partir de la variable aggression et mesure principalement ce paramètre. 
+
+<br>
+
+### 4 - ACP normée
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, fig.width=14, fig.height=6}
+#add a group feature to the data set
+group_labels = cutree(tree_scaled, k = 5)
+data_scaled$group = group_labels
+data_scaled$group = as.factor(data_scaled$group)
+
+#PCA
+result = PCA(data_scaled,
+             graph = FALSE,
+             scale.unit = FALSE,
+             quanti.sup = 3,
+             quali.sup = 5)
+
+#ind projection
+plot1 = fviz_pca_ind(result,
+                     col.ind = data_scaled$group,
+                     legend.title = "Groupes",
+                     ylim=c(-3,3),
+                     xlim=c(-3.5,3.5))
+
+#var projection
+plot2 = fviz_pca_var(result,
+             ylim=c(-1,1),
+             xlim=c(-1,1))
+
+#plot graphs
+ggarrange(plot1, plot2, ncol = 2)
+```
+
+Le premier axe semble toujours corrélé à la variable assault. Cependant les variables rape et murder sont désormais comparable au nombre d'aggression et contribue également au premier axe. Les variables sont bien projetées.
+
+**Interprétation de la partition en 5 classes:**\
+- Le Groupe 1 représente les Etats principalement victime d'aggression et de meurtre.\
+- Le Groupe 2 représente les Etats principalement victime d'aggression et de viol. On peut alors aisément identifier les Etats les plus touchés par les viols. \
+- Le Groupe 3 représente les Etats sans caractéristiques particulières, dans la moyenne.\
+- Le Groupe 4 représente les Etats avec relativement peu ou moyennement d'aggressions et de meurtres.\
+- Le Groupe 5 représente les Etats avec le plus faible niveau de criminalité, que ce soit en terme d'aggressions, de meurtres ou de viols. 
+
+
+<br>
+
+### 5 - catdes
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+res = catdes(data, num.var = 5)
+plot.catdes(res, level = 0.05)
+```
+
+
+<br>
+<br>
+
+
+# Exercice 5
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+load("protein.rda")
+data = protein
+```
+
+<br>
+
+# 1 - Réduction de la dimension
+
+Il y a au maximium 9 composantes principales, égal aux nombres de variables dans le jeu de données. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, fig.width=14}
+#dendogram with normalized data
+data_scaled = scale(data)*(25/24)
+d = dist(data_scaled)
+tree = hclust(d^2/(2*25), method="ward.D")
+plot1 = fviz_dend(tree, main = "CAH sur les variables normées")
+
+#PCA
+result = PCA(data_scaled, ncp = 9, graph = FALSE)
+
+#dendogram with the first 4 principal components
+result_hcpc = HCPC(result, graph = FALSE)
+plot2 = fviz_dend(result_hcpc, main = "CAH sur les 9 premières composantes principales", k_colors = "black")
+
+#plot graphs
+ggarrange(plot1, plot2, ncol = 2)
+```
+
+
+On observe en comparant les deux dendrogrammes que les premières dimensions sont les mêmes pour les deux dendrogrammes. Les différences se retrouvent dans les répartition en nombre maximum de classes.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, fig.width=14, fig.height=6}
+#eigenvalues and scree graph
+fviz_eig(result, addlabels = TRUE, ylim = c(0, 60),
+         main = "Graphique des éboulis",
+         xlab = "Composante principale",
+         ylab = "Pourcentage de variance expliquée")
+
+#information in the first 4 principal components
+sum(result$eig[1:4]) / sum(result$eig[1:9])
+```
+
+85,8% de l'information est conservée avec les 4 premières composantes principales. 
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, fig.width=14}
+#PCA
+result = PCA(data_scaled, ncp = 4, graph = FALSE)
+
+#dendogram with the first 4 principal components
+result_hcpc = HCPC(result, graph = FALSE)
+plot2 = fviz_dend(result_hcpc, main = "CAH sur les 4 premières composantes principales", k_colors = "black")
+
+#plot graphs
+ggarrange(plot1, plot2, ncol = 2)
+```
+
+Les deux dendogrammes se ressemblent fortement. On constate une différence essentiellement au niveau des premières agrégations, notamment des singletons. Ces derniers sont alors probablement plus proche, au sens de la métrique de *distance* utilisée ici. 
+
+<br>
+
+### 2 - Clustering de variables
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, fig.width=14, fig.height=8}
+treevar = hclustvar(data)
+plot(treevar, main="Clustering des variables") 
+rect.hclust(treevar, k=4)
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+cov = cutreevar(treevar, k = 4)
+# Nouvelles données avec 4 variables synthétiques 
+newdat3 = cov$scores
+D = dist(newdat3)
+tree_new = hclust(D^2/(2*25), method="ward.D")
+plot(tree_new, main = "CAH sur les 4 variables synthétiques de clust of var")
+```
+
+La répartition selon les 4 variables synthétiques permet de concentrer l'analyse uniquement sue ces variables et donc de faire ressortir les individus qui représentent le mieux les variables détenant le plus d'informations. Néanmoins le dendrogramme est plus difficile à interpréter car nous ne pouvons pas les interpréter selon les variables d'origines.
+
+Un autre avantage de cette méthode de réduction en dimension est la réduction du bruit, en effet en agrégeant des variables similaires, les variables synthétiques peuvent plus facilement capturer les tendances et relation des données tout en réduisant le bruit et en supprimant les variables redondantes.
+
+Ainsi sur le dendrogramme nous observons qu'a droite les groupes sont les mêmes pour les deux, ce sont les individus corrélés avec les variables fish, starchy foods, et fruite veg, pour le dendrogramme standardisé; les autres groupes sont quand à eux totalement différent permettant d'avoir deux approches d'analyses différentes. 
+
+
+
+
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+
+
