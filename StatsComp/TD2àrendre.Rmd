@@ -1,0 +1,274 @@
+---
+title: "TD2 à rendre"
+author: "Erwan Judic, Barbier--Darnal Joseph"
+output: html_document
+---
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+rm(list=ls())
+setwd("/Users/josephbarbier/Desktop/M1S2/stats computationnelles")
+library(FactoMineR)
+library(factoextra)
+library(stats)
+```
+
+
+
+
+
+
+# Exercice 2
+
+### Open file
+
+```{r}
+df = read.table("fromage.txt", header = TRUE, row.names = 1)
+head(df)
+```
+
+
+
+
+
+\
+<br>
+
+### Standardize data
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+#uncorrected variance
+n = nrow(df)
+correction = sqrt((n-1)/n)
+std = function(vec){
+  return(sd(vec)*correction)
+}
+
+#center
+df_norm = scale(df, scale=FALSE)
+
+#reduce
+stds = apply(df, 2, std)
+for (i in seq(1,ncol(df))){
+  df_norm[,i] = df_norm[,i] / stds[i]
+}
+
+#convert to dataframe
+df_norm = as.data.frame(df_norm)
+
+apply(df_norm, 2, std)
+round(apply(df_norm, 2, mean))
+```
+
+
+
+\
+<br>
+
+### ward's CAH
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+d = dist(df_norm)
+n = nrow(df_norm)
+tree = hclust(d^2/(2*n), method="ward.D")
+k = 5
+group_labels_ward = cutree(tree, k = k)
+df_norm$group = group_labels_ward
+```
+
+
+
+
+\
+<br>
+
+### Explained inertia
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+explained_inertia = sum(sort(tree$height, decreasing = TRUE)[1:k-1])/sum(tree$height) *100
+cat("Percentage of explained inertia (ward's CAH, with k =", k, ")", round(explained_inertia,2), "%")
+```
+
+
+
+
+\
+<br>
+
+### K-means
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+k_means = function(k, df=df_norm[1:9], nstart=1){
+  kmeans = kmeans(df, k, nstart=nstart)
+  explained_inertia = kmeans$betweenss/kmeans$totss*100
+  cat("Percentage of explained inertia (k-means, with k =", k, ")", round(explained_inertia,2), "%\n")
+}
+
+k_means(5)
+```
+
+
+
+
+
+\
+<br>
+
+### Multiple k-means
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+k_means(5, nstart = 10)
+```
+
+Le pourcentage d'inertie expliquée change en re-exécutant l'algorithme des k-means, pour un k fixe. Cela est dû au fait que la première partition, à l'étape 1 de l'algorithme, est aléatoire, amenant l'algorithme à converger vers différents extrema locaux en fonction de cette initialisation.
+
+Afin de trouver un meilleur extremum local, on peut fixer la valeur de l'argument `nstart` en la mettant plus élevée. En faisant cela, on fait tourner l'algorithme *nstart-fois* et on garde la partition avec la plus grande proportion d'inertie expliquée. 
+
+
+
+
+
+
+\
+<br>
+
+### Best clustering method
+
+Dans notre cas, la meilleure méthode de partitionnement en 5 classes est celle des k-means puisqu'elle maximise davantage notre critère d'inertie inter-classe.
+
+
+
+
+
+\
+<br>
+
+### Table
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+kmean = kmeans(df_norm[1:9], 5, nstart=10)
+group_labels_kmeans = kmean$cluster
+table(group_labels_kmeans, group_labels_ward)
+```
+
+La fonction `table` nous permet de voir la différence de réparition parmi les deux méthodes de partitionnement utilisée. Dans notre cas, on retrouve 2 individus qui diffèrent entre les partitions proposées.  
+
+
+
+
+
+
+
+\
+<br>
+\
+<br>
+
+# Exercice 3
+
+```{r}
+load("protein.rda")
+df = protein
+
+#uncorrected variance
+n = nrow(df)
+correction = sqrt((n-1)/n)
+std = function(vec){
+  return(sd(vec)*correction)
+}
+
+#center
+df_norm = scale(df, scale=FALSE)
+
+#reduce
+stds = apply(df, 2, std)
+for (i in seq(1,9)){
+  df_norm[,i] = df_norm[,i] / stds[i]
+}
+
+#convert to dataframe
+df_norm = as.data.frame(df_norm)
+
+apply(df_norm, 2, std)
+round(apply(df_norm, 2, mean))
+```
+
+
+
+
+### ward's CAH
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+d = dist(df_norm)
+n = nrow(df_norm)
+tree = hclust(d^2/(2*n), method="ward.D")
+sum(tree$height) == ncol(df_norm)
+```
+
+
+
+
+
+
+\
+<br>
+
+### explained inertia
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+k = 3
+group_labels_ward = cutree(tree, k = k)
+df_norm$group = group_labels_ward
+explained_inertia = sum(sort(tree$height, decreasing = TRUE)[1:k])/sum(tree$height) *100
+cat("Percentage of explained inertia (ward's CAH, with k =",k,")", round(explained_inertia,2), "%")
+```
+
+
+
+
+
+
+
+\
+<br>
+
+### consolidation
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+#compute centroids
+clust.centroid = function(i, dat, clusters){
+    ind = (clusters == i)
+    colMeans(dat[ind,])
+}
+
+#apply
+t(sapply(unique(group_labels_ward), clust.centroid, df_norm[1:9], group_labels_ward))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+\
+<br>
+\
+<br>
+\
+<br>
+\
+<br>
+\
+<br>
+\
+<br>
