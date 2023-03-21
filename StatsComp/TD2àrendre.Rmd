@@ -10,6 +10,10 @@ setwd("/Users/josephbarbier/Desktop/M1S2/stats computationnelles")
 library(FactoMineR)
 library(factoextra)
 library(stats)
+library(ggplot2)
+library(hrbrthemes)
+library(RColorBrewer)
+library(maps)
 ```
 
 
@@ -163,46 +167,67 @@ La fonction `table` nous permet de voir la différence de réparition parmi les 
 \
 <br>
 
-# Exercice 3
+# Exercice 4
 
 ```{r}
-load("protein.rda")
-df = protein
+df = read.table("urbanGB.txt", sep = ",", dec=".", header = FALSE)
+colnames(df) = c("longitude", "latitude")
+head(df)
+```
 
-#uncorrected variance
-n = nrow(df)
-correction = sqrt((n-1)/n)
-std = function(vec){
-  return(sd(vec)*correction)
-}
 
-#center
-df_norm = scale(df, scale=FALSE)
+\
+<br>
 
-#reduce
-stds = apply(df, 2, std)
-for (i in seq(1,9)){
-  df_norm[,i] = df_norm[,i] / stds[i]
-}
+### Scatter plot
 
-#convert to dataframe
-df_norm = as.data.frame(df_norm)
-
-apply(df_norm, 2, std)
-round(apply(df_norm, 2, mean))
+```{r echo=TRUE, message=FALSE, warning=FALSE, fig.align='center', fig.width=4, fig.height=5}
+ggplot(df, aes(x = longitude, y = latitude)) + geom_point() + theme_classic()
 ```
 
 
 
 
-### ward's CAH
 
-```{r echo=TRUE, message=FALSE, warning=FALSE}
-d = dist(df_norm)
-n = nrow(df_norm)
-tree = hclust(d^2/(2*n), method="ward.D")
-sum(tree$height) == ncol(df_norm)
+\
+<br>
+
+### Clustering
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, fig.align='center', fig.width=4, fig.height=5}
+#kmeans and centroids
+kmeans_result = kmeans(df[,c("longitude","latitude")], centers=1000, iter.max=20)
+centers = aggregate(df[,c("longitude","latitude")], by = list(cluster = kmeans_result$cluster), FUN = mean)
+centers$weight = kmeans_result$size / nrow(df)
+
+#ward algorithm
+dist_matrix = dist(centers[, c("longitude", "latitude")])
+ward_result = hclust(dist_matrix, method = "ward.D")
+partition = cutree(ward_result, k = 10)
+
+#plot new graph
+ggplot(centers, aes(x = longitude, y = latitude)) + geom_point(col=partition) + theme_classic()
 ```
+
+
+
+
+
+\
+<br>
+
+### England map
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, fig.align='center', fig.width=4, fig.height=5}
+worldmap = map_data('world')
+carte = ggplot() +
+  geom_polygon(data = worldmap, aes(x = long, y = lat, group = group),
+               fill = 'gray90',color = 'black') +
+  coord_fixed(ratio = 1.3,  xlim = c(-10,3), ylim = c(50, 59)) +
+  theme_void()
+carte
+```
+
 
 
 
@@ -212,46 +237,15 @@ sum(tree$height) == ncol(df_norm)
 \
 <br>
 
-### explained inertia
-
-```{r echo=TRUE, message=FALSE, warning=FALSE}
-k = 3
-group_labels_ward = cutree(tree, k = k)
-df_norm$group = group_labels_ward
-explained_inertia = sum(sort(tree$height, decreasing = TRUE)[1:k])/sum(tree$height) *100
-cat("Percentage of explained inertia (ward's CAH, with k =",k,")", round(explained_inertia,2), "%")
+```{r echo=TRUE, message=FALSE, warning=FALSE, fig.align='center', fig.width=7, fig.height=8}
+carte = ggplot() +
+  geom_polygon(data = worldmap, aes(x = long, y = lat, group = group),
+               fill = 'gray90',color = 'black') +
+  coord_fixed(ratio = 1.3,  xlim = c(-10,3), ylim = c(50, 59)) +
+  theme_void() +
+  geom_point(data = centers, aes(x = longitude, y = latitude, color = as.factor(partition)), alpha = 0.6, size = 1.5)
+carte
 ```
-
-
-
-
-
-
-
-\
-<br>
-
-### consolidation
-
-```{r echo=TRUE, message=FALSE, warning=FALSE}
-#compute centroids
-clust.centroid = function(i, dat, clusters){
-    ind = (clusters == i)
-    colMeans(dat[ind,])
-}
-
-#apply
-t(sapply(unique(group_labels_ward), clust.centroid, df_norm[1:9], group_labels_ward))
-```
-
-
-
-
-
-
-
-
-
 
 
 
