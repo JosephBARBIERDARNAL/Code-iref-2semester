@@ -14,6 +14,8 @@ library(ggplot2)
 library(hrbrthemes)
 library(RColorBrewer)
 library(maps)
+library(ClustOfVar)
+library(ggpubr)
 ```
 
 
@@ -68,7 +70,7 @@ round(apply(df_norm, 2, mean))
 \
 <br>
 
-### ward's CAH
+### Ward's CAH
 
 ```{r echo=TRUE, message=FALSE, warning=FALSE}
 d = dist(df_norm)
@@ -88,8 +90,8 @@ df_norm$group = group_labels_ward
 ### Explained inertia
 
 ```{r echo=TRUE, message=FALSE, warning=FALSE}
-explained_inertia = sum(sort(tree$height, decreasing = TRUE)[1:k-1])/sum(tree$height) *100
-cat("Percentage of explained inertia (ward's CAH, with k =", k, ")", round(explained_inertia,2), "%")
+explained_inertia = sum(sort(tree$height, decreasing = TRUE)[1:k]) / sum(tree$height) *100
+cat("Percentage of explained inertia (ward's CAH, with k =", k, ")", round(explained_inertia,4), "%")
 ```
 
 
@@ -137,7 +139,7 @@ Afin de trouver un meilleur extremum local, on peut fixer la valeur de l'argumen
 
 ### Best clustering method
 
-Dans notre cas, la meilleure méthode de partitionnement en 5 classes est celle des k-means puisqu'elle maximise davantage notre critère d'inertie inter-classe.
+Dans notre cas, la meilleure méthode de partitionnement en 5 classes est celle de la CAH de Ward puisqu'elle maximise davantage notre critère d'inertie inter-classe. 
 
 
 
@@ -154,7 +156,115 @@ group_labels_kmeans = kmean$cluster
 table(group_labels_kmeans, group_labels_ward)
 ```
 
-La fonction `table` nous permet de voir la différence de réparition parmi les deux méthodes de partitionnement utilisée. Dans notre cas, on retrouve 2 individus qui diffèrent entre les partitions proposées.  
+La fonction `table` nous permet de voir la différence de réparition parmi les deux méthodes de partitionnement utilisée. Dans notre cas, on retrouve 2 individus qui diffèrent entre les partitions proposées. Dit autrement : la partition en 5 classes, quelle soit déterminée par l'algorithme de Ward ou celui des k-means, est similaire. 
+
+
+
+
+
+
+
+
+
+
+
+\
+<br>
+\
+<br>
+
+# Exercice 3
+
+
+### 1
+
+```{r}
+load("protein.rda")
+protein_scale = scale(protein)*sqrt(25/24)
+protein_scale = as.data.frame(protein_scale)
+d = dist(protein_scale)
+arbre = hclust(d^2/(2*25), method = "ward.D")
+sum(arbre$height)
+```
+
+La somme des hauteurs est bien égal à l'inertie total (le nombre de variables) donc 9.
+
+### 2
+
+```{r}
+explained_intertia = sum(sort(arbre$height, decreasing = TRUE)[1:2])
+total_inertia = sum(arbre$height)
+explained_intertia / total_inertia
+```
+
+La proportion d'inertie expliqué par la repartition en 3 classes est de 48,5%.
+
+### 3
+
+```{r}
+part = cutree(arbre, k = 3)
+protein_scale = as.data.frame(protein_scale)
+protein_scale$cluster = part
+
+Z1 = protein_scale[part == 1,]
+Z2 = protein_scale[part == 2,]
+Z3 = protein_scale[part == 3,]
+
+g1 = apply(Z1, 2, mean)
+g2 = apply(Z2, 2, mean)
+g3 = apply(Z3, 2, mean)
+
+cent = rbind(g1, g2, g3)
+cent
+```
+
+```{r}
+spc = split(data.frame(protein_scale), as.factor(part), drop = FALSE)
+```
+
+```{r}
+km = kmeans(protein_scale,centers=cent,nstart = 50)
+```
+
+km correspond à la consolidation en 3 classes de la partition initiale en appliquant les kmeans. 
+
+### 4
+
+```{r}
+partWard= cutree(arbre,k=3)
+km_cl=km$cluster
+table(partWard,km_cl) 
+```
+
+On retrouve bien le tableau croisé.
+
+### 5
+
+```{r}
+B = km$betweenss
+T = km$totss
+partInertieExpl = B/T
+partInertieExpl 
+```
+
+Le pourcentage d'inertie expliqué est désormais de 52% avec la consolidation des k-means.
+Soit une amélioration d'environ 4%.
+
+```{r fig.align='center'}
+object = list(data = protein_scale[1:9], cluster = partWard)
+plot1 = fviz_cluster(object, data = protein_scale[1:9], stand = FALSE, main = "Cluster plot partition de Ward")
+plot2 = fviz_cluster(km, data = protein_scale[1:9], stand = FALSE, main = "Cluster plot consolidation des k-means")
+
+ggarrange(plot1, plot2, ncol = 2)
+```
+
+On observe alors que deux pays ont changés de classes, l'URSS et la Hongrie. On observe ce résultat sur les graphiques et sur le tableau croisé. 
+
+
+
+
+
+
 
 
 
@@ -179,10 +289,10 @@ head(df)
 \
 <br>
 
-### Scatter plot
+### 1 - Scatter plot
 
 ```{r echo=TRUE, message=FALSE, warning=FALSE, fig.align='center', fig.width=4, fig.height=5}
-ggplot(df, aes(x = longitude, y = latitude)) + geom_point() + theme_classic()
+ggplot(df, aes(x = longitude, y = latitude)) + geom_point() + theme_classic() + ggtitle("Accidents en Angleterre")
 ```
 
 
@@ -192,23 +302,17 @@ ggplot(df, aes(x = longitude, y = latitude)) + geom_point() + theme_classic()
 \
 <br>
 
-### Clustering
+### 2 - Dimensionality reduction with k-means clustering
 
-```{r echo=TRUE, message=FALSE, warning=FALSE, fig.align='center', fig.width=4, fig.height=5}
+```{r echo=TRUE, message=FALSE, warning=FALSE, fig.align='center', fig.width=6, fig.height=7}
 #kmeans and centroids
 kmeans_result = kmeans(df[,c("longitude","latitude")], centers=1000, iter.max=20)
 centers = aggregate(df[,c("longitude","latitude")], by = list(cluster = kmeans_result$cluster), FUN = mean)
 centers$weight = kmeans_result$size / nrow(df)
 
-#ward algorithm
-dist_matrix = dist(centers[, c("longitude", "latitude")])
-ward_result = hclust(dist_matrix, method = "ward.D")
-partition = cutree(ward_result, k = 10)
-
 #plot new graph
-ggplot(centers, aes(x = longitude, y = latitude)) + geom_point(col=partition) + theme_classic()
+ggplot(centers, aes(x = longitude, y = latitude)) + theme_classic() + ggtitle("1000 accidents moyens") + geom_point()
 ```
-
 
 
 
@@ -216,7 +320,25 @@ ggplot(centers, aes(x = longitude, y = latitude)) + geom_point(col=partition) + 
 \
 <br>
 
-### England map
+### 3 - Ward's algorithm
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, fig.align='center', fig.width=4, fig.height=5}
+#ward algorithm
+dist_matrix = dist(centers[, c("longitude", "latitude")])
+n = nrow(centers)
+ward_result = hclust(dist_matrix^2/(2*n), method = "ward.D")
+partition = cutree(ward_result, k = 10)
+
+#plot new graph
+ggplot(centers, aes(x = longitude, y = latitude)) + geom_point(col=partition) + theme_classic() + ggtitle("1000 accidents moyens")
+```
+
+
+
+\
+<br>
+
+### 4 - England map
 
 ```{r echo=TRUE, message=FALSE, warning=FALSE, fig.align='center', fig.width=4, fig.height=5}
 worldmap = map_data('world')
@@ -237,6 +359,8 @@ carte
 \
 <br>
 
+### 5 - Map + partition
+
 ```{r echo=TRUE, message=FALSE, warning=FALSE, fig.align='center', fig.width=7, fig.height=8}
 carte = ggplot() +
   geom_polygon(data = worldmap, aes(x = long, y = lat, group = group),
@@ -247,6 +371,98 @@ carte = ggplot() +
 carte
 ```
 
+
+On retrouve ici l'idée intuitive que les (centroids d') accidents les plus proches au sens de Ward correspondent aux (centroids d') accidents les plus proches au sens géographique : la position des individus dans l'espace des paramètres est littéralement la latitude et longitude réelle. 
+
+On remarque également des clusters parmi les clusters. La position des groupes définis par la partition de Ward est graphiquement bien distincte. En effet, on peut aisément repérer de grandes villes au centre des clusters de la partition, notamment Londres, Manchester, Birmingham, Durham, Edimbourg/Glasgow. Il semble donc qu'il y ait plutôt davantage d'accidents proche ou au sein des grandes villes de Grande-Bretagne. 
+
+
+
+
+
+
+<br>
+<br>
+
+# Exercice 5
+
+
+```{r}
+data(wine)
+print(wine[1:5,c(1:2,27,26,29)])
+```
+
+### 1
+
+```{r}
+res = FAMD(wine)
+```
+
+Le premier graphique représente la projection des individus aux 2 premiers axes factoriels avec les modalités des variables catégoriels en rouges.
+Le deuxième graphique représente la projection des individus sur les deux premiers axes factoriels en gardant uniquement les variables numériques
+Le troisième graphique est la projection des variables sur les deux premiers axes factoriels, avec encore une fois les variables catégoriels en rouge.
+Le quatrième graphique est la projection de la modalité que peuvent prendre les individus sur les 2 premiers axes factoriels. 
+Le cinquième est le cercle de corrélation des variables numériques sur les deux premiers axes factoriels.
+
+Contribution des variables au premier axe factoriel:
+
+```{r}
+contrib <- abs(res$var$coord * sqrt(res$eig[1:5]))
+contrib1 = contrib[,1]
+contrib1 = sort(contrib1, decreasing = TRUE)/sum(contrib1)*100
+round(contrib1, digits = 2)
+```
+
+Ainsi une grande partie des variables contribuent légèrement au premier axe factoriel de l'ACP mixte, avec Intensity contribuant le plus fortement.
+
+Contribution des variable pour le second axe factoriel:
+```{r}
+contrib2 = contrib[,2]
+contrib2 = sort(contrib2, decreasing = TRUE)/sum(contrib2)*100
+round(contrib2, digits = 2)
+```
+
+On observe que les variables spice before shaking, le type de sol, l'amertume et l'intensité olfactive avant de mélanger contribuent le plus fortement au deuxième axe, se sont également des variables contribuant peu au premier axe facotriel.
+
+### 2
+
+Nous avons au maximum 20 composantes principales, égal au nombres d'observations -1.
+
+```{r}
+res2 = FAMD(wine, ncp = 20, graph = FALSE)
+```
+### 3
+
+```{r message=FALSE, warning=FALSE}
+result_hcpc = HCPC(res2,nb.clust = 4, graph = FALSE, consol = FALSE)
+fviz_dend(result_hcpc, main = "CAH sur les 20 premières composantes principales", k_colors = "black", rect = TRUE, rect_border = "red", rect_lty = 1)
+```
+
+### 4
+
+```{r message=FALSE, warning=FALSE}
+result_hcpc2 = HCPC(res2, nb.clust = 4, graph =FALSE, consol = TRUE)
+
+part_Ward = result_hcpc$data.clust$clust
+part_km = result_hcpc2$data.clust$clust
+
+table(part_km,part_Ward)
+
+```
+
+Grace à la fonction table, on observe que deux vins ont changés de classes.
+
+### 5
+
+Interprétation des 4 classes de vins.
+
+Sur le premier graphique on observe que les individus du cluster3 auront des valeurs plus élevés, donc supérieur à la moyenne, pour les variables les mieux réprésentés par les variables du premier axe factoriel. Ces résultats se retrouvent également sur le deuxième graphique.
+
+Les individus du cluster2 ont des valeurs très faibles pour les variables du premier axe facotriel.
+
+Les individus du cluster4 n'ont pas vraiment de valeurs supérieur à la moyenne pour toutes les variables du jeu de donnée.
+
+Pour finir les individus du cluster 4 ont des valeurs très élevé pour les variables du second axe factoriel.
 
 
 
