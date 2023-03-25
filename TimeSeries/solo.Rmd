@@ -1,0 +1,291 @@
+---
+title: "Série temporelle : taux d'épargne des Pays-Bas depuis 1969"
+author: "Barbier--Darnal Joseph"
+output: pdf_document
+---
+
+# Introduction
+
+### A propos des Pays-Bas
+
+Les deux crises pétrolières des années 70 ont provoqué une flambée des prix de l'énergie, une inflation élevée et une récession économique mondiale. Les pays occidentaux ont cherché à diversifier leurs sources d'énergie et à améliorer l'efficacité énergétique pour réduire leur dépendance au pétrole étranger. Malgré la découverte du gisement de Groningue au nord des Pays-Bas, impliquant une explosion de la production de gaz naturel jusqu'en 1977 au sein du pays$^1$, les crises pétrolières prouvèrent l'importance des hydrocarbures, ne permettant pas aux Pays-Bas d'échapper à la règle. 
+
+La découverte du gisement de Groningue a également eu de faire apparaître le terme de "*mal hollandais*", désignant l'impact de l'exploitation de ressources naturelles sur l'industrie manufaturière locale. Le fort accroissement des recettes d'exportations de gaz naturel provoqua une forte appréciation de la devise hollandaise, nuisant alors à la compétitivité-prix des exportations non liées au gaz naturel des Pays-Bas$^2$. 
+
+Aujourd'hui, les Pays-Bas profitent fortement des échanges commerciaux internationnaux, notamment grâce au domaine agricole/maraîcher et sont une place financière mondiale, s'illustrant par les performances similaires de l'AEX index (25 plus grosses capitalisations des entreprises néerlandaises) et le Dow Jones ou le CAC 40. Les Pays-Bas sont aussi parfois qualifiés de "paradis fiscal qui ne dit pas son nom", en permettant par exemple à l'entreprise Nike de ne payer que 2% d'impôts sur les bénéfices grâce à sa filiale locale. 
+
+En résumé, l'économie hollandaise a évolué de manière significative au fil des ans, passant d'une économie agricole à une économie manufacturière et de services avancée et diversifiée, avec une ouverture accrue aux marchés internationaux.
+
+### Données du taux d'épargne
+
+Les données utilisées ici représentent le taux d'épargne annuel des Pays-Bas entre 1969 et 2021, en pourcentage. 
+
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+setwd("/Users/josephbarbier/Desktop/M1S2/série temp/projet")
+rm(list=ls())
+
+#packages
+library(readxl)
+library(ggplot2)
+library(dplyr)
+library(plotly)
+library(urca)
+library(stats)
+library(fpp2)
+library(forecast)
+library(lmtest)
+library(tseries)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+#open series about Netherlands saving rate
+savings = t(read_excel("taux-epargne.xls"))
+colnames(savings) = paste(as.character(savings[1,]),as.character(savings[2,])) 
+
+#keep only information needed
+savings = as.data.frame(savings[-c(1,2),])
+savings = subset(savings, select = c("Netherlands NLD", "Country Name Country Code"))
+
+#change index and column names
+colnames(savings) = c("Saving", "Date")
+rownames(savings) = 1:nrow(savings)
+savings = subset(savings, Date > 1968)
+
+head(savings)
+
+#converting to time series
+savings$Date = as.integer(savings$Date)
+savings$Saving = as.numeric(savings$Saving)
+ts = ts(savings$Saving, freq=1, start=1969)
+```
+
+### Statistiques descriptives
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+cat("Moyenne de la série sur la période :", mean(ts))
+cat("Ecart-type de la série sur la période :", sd(ts))
+cat("Medianne de la série sur la période :", median(ts))
+```
+
+
+
+
+
+
+
+
+
+
+
+\
+\
+
+### Chronogramme du taux d'épargne des Pays-Bas
+
+```{r echo=FALSE, fig.align='center', fig.height=8, fig.width=12, message=FALSE, warning=FALSE}
+savings %>% 
+  ggplot(aes(x=Date, y=Saving)) +
+    geom_line(color="#69b3a2") +
+    ylim(20,33) +
+    annotate(geom="text", x=1974, y=30.5, label="First petrol crisis") +
+    annotate(geom="point", x=1973, y=30, size=10, shape=21, fill="transparent") +
+    annotate(geom="text", x=1980, y=23.5, label="Second petrol crisis") +
+    annotate(geom="point", x=1978, y=22.8, size=10, shape=21, fill="transparent") +
+    geom_hline(yintercept=median(savings$Saving), color="orange", size=.5) + 
+    geom_segment(x = 2016, y = 23, xend = 2019, yend = 25.5, arrow = arrow(length = unit(0.3, "cm"))) +
+    annotate(geom="text", x=2015, y=22.5, label="Median saving rate during the period") +
+    theme_bw()
+
+```
+
+L'évolution du taux d'épargne de la Hollande s'est vu diminué durant l'entièreté des années 70, notamment en suivant de la première crise pétrolière. Au global, la tendance est légèrement baissière. 
+
+
+
+\
+\
+
+# Stationnarité de la série
+
+On cherche à savoir si le PGD générateur de nos données est stationnaire. 
+
+### Dickey-Fuller
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+summary(ur.df(ts, type = "trend", lags = 0))
+```
+
+
+
+
+
+
+
+
+\
+\
+
+# Détection d'autocorrélation
+
+On cherche à savoir si notre série est autocorrélée, et si oui, à quel(s) ordre(s). 
+
+### Fonction d'autocorrélation
+
+```{r echo=FALSE, fig.align='left', message=FALSE, warning=FALSE, fig.width=7, fig.height=4}
+ggAcf(ts) + theme_bw() + ggtitle("")
+```
+
+D'après le graphique de l'ACF, notre série est autocorrélée à l'ordre 1, 2 et 3. Cette information nous ait donnée par le fait que l'autocorrélation à l'ordre 1, 2 et 3 dépasse le seuil donné (ici $\alpha =5\%$).
+
+
+
+### Fonction d'autocrrélation partielle 
+
+```{r echo=FALSE, fig.align='left', message=FALSE, warning=FALSE, fig.width=7, fig.height=4}
+ggPacf(ts) + theme_bw() + ggtitle("")
+```
+
+
+
+
+
+
+\
+\
+
+# Modélisation d'un ARMA(p,q)
+
+```{r echo=FALSE, fig.align='left', message=FALSE, warning=FALSE, fig.width=7, fig.height=4}
+model = Arima(ts, order = c(3,0,2))
+coeftest(model)
+```
+
+
+
+
+
+
+\
+\
+
+# Tests sur les résidus
+
+On cherche à vérifier si les résidus issus de notre série sont des bruits blancs gaussiens. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+residuals = model$residuals
+```
+
+### Test d'espérance nulle
+
+Afin de déterminer si l'espérance des aléas est nulle, on utilise la moyenne des résidus, notée $m(e)$, et on calcule un $t$ de Student. Le test effectué est le suivant :
+
+- H$_0$ : $E(\varepsilon_t) = 0$
+- H$_1$ : $E(\varepsilon_t) \neq 0$
+
+La statistique de test utilisée est :
+
+$$t = \frac{\mid m(e) \mid}{\sigma_e} \times \sqrt{T}$$
+
+Sous H$_0$, la statistique $t$ suit asymptotiquement une $N(0,1)$.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+t.test(residuals)
+```
+
+Etant donné que $p>0.05$, on ne rejette pas l'hypothèse nulle d'espérance des aléas nulle. 
+
+
+
+\
+
+### Test d'autocorrélation
+
+On cherche à savoir si notre modèle $ARMA(p,q)$ prend bien en compte toute l'autocorrélation de la série. S'il en reste dans les résidus, alors notre modèle modélise mal nos données et doit être ré-estimé. 
+
+On effectue le test suivant :
+
+- H$_0$ : $\rho(1) = \rho(2) = \dots = \rho(K) =0$
+- H$_1$ : Au moins un des $\rho(k) \neq 0$
+
+La statistique de test utilisée est :
+
+$$Q_K = T(T+1) \sum_{k=1}^{K} \frac{\hat\rho(k)^2}{T-k}$$
+
+Sous H$_0$, la statistique $Q_K$ suit asymptotiquement un $\chi^2$ à $K$ degrés de liberté.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+Box.test(residuals, lag = 10)
+```
+
+\
+
+### Test de normalité
+
+Afin de savoir si les conclusions tirées sur nos coefficients estimés sont valides, on cherche à savoir si les aléas sont normalement distribués. Pour cela, on effectue un test de Jarque-Bera sur les résidus. On test alors :
+
+- H$_0$ : normalité des données
+- H$_1$ : non-normalité des données
+
+La statistique de test utilisée est :
+$$JB = \frac{n-k}{6}\times (S^2 + \frac{(K-2)^2}{4})$$
+avec $S$ le coefficient d'asymétrie (*skewness*) et $K$ le coefficient d'applatissement (*kurtosis*).
+
+Sous H$_0$, la statistique $JB$ suit asymptotiquement un $\chi^2$ à $2$ degrés de liberté.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+jarque.bera.test(residuals)
+```
+
+La p-value associée à la valeur de test étant supérieure au seuil de $5\%$, on ne rejette pas l'hypothèse nulle de normalité des données. Nos inférences précédentes sont alors valides et on peut s'en servir pour faire de la prédiction. 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+\
+\
+\
+\
+\
+\
+\
+\
+\
+
+# References
+
+1. [Natural gas balance sheet; supply and consumption](https://opendata.cbs.nl/statline/#/CBS/en/dataset/00372eng/table?ts=1550090436913)
+
+2. [Corden, W. M., & Neary, J. P. (1982). Booming sector and de-industrialisation in a small open economy. The economic journal, 92(368), 825-848.](https://academic.oup.com/ej/article/92/368/825/5220457)
+
+
+
+
+
+\
+\
+\
+\
+\
+\
+\
+\
+\
+\
+\
+\

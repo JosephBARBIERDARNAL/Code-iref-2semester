@@ -1,0 +1,350 @@
+---
+title: "Séries temporelles"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+Projet 1 : detection des dates de rupture dans le ROA
+
+Projet 2 : test de racines unitaires et predictions sur le ROA
+
+Mettre une intro : type de la série, info sur le pays sur la période...
+
+Afficher les crises sur un chronogramme.
+Pas de monthplot ou decompose car données annuelles
+
+Calculer les stats descriptives de la série. 
+
+Tests de racines unitaires (les 4)
+
+Dans le corps du texte, on ne met que la bonne spécification du test de racines unitaires, et les autres en annexes. 
+
+Mettre l'équation du modèle estimé
+
+Interpréter une statistique de test, au moins une fois : H0, H1, la formule, et la distribution sous H0. 
+
+Rendre la série stationnaire, une fois que c'est le cas : ACF, PACF, LUNGBOX
+
+Pour chaque graphique : commenter le graph forcément
+
+**Si autocorrélation** : modéliser cette dernière avec EACF. Cette dernière nous donne les valeurs de départ de p et de q et donc on fait ARMA(p,q). A la fin, tous les coefficients du modèle doivent être significatifs. S'il existe un modèle mieux que le notre, on perd 1 point. 
+
+Si annexe remplie, point bonus. 
+
+Tous les modèles, même annexe, doivent être commentés. 
+
+
+
+Pour les résidus
+
+Ensuite on vérifie que les aléas sont des bruits blancs. E(\varepsilon) = 0. Si on rejette H0, cela veut dire que l'on a enlevé à tort l'intercept et qu'il faut le rajouter)
+
+Test de ljung box pour vérifier qu'il n'y a plus d'autocorrélation dans les résidus. Si on rejette H0, alors on ré estime le modèle ARMA(p,q) avec des p et q plus grands. 
+
+Test ARCH sur l'homoscédasticité.
+
+Si les 3 H0 sont vrais, on peut faire de la prévision : d'abord sur la série transformée, puis sur la série originale. 
+
+Tester jacques berra pour la normalité, sinon, test agostino et anscombe sur les résidus + histogramme (on cherche à savoir si le rejet de l'hypothèse associée à jarque berra est dû à la skewness ou au kurtosis)
+
+
+
+Comparer des modèles
+
+- tous les coefs doivent être significatifs
+- les aléas sont des bruits blancs
+
+On choisit celui qui minimise le BIC (possibilité de choisir d'autre critère, mais il faut justifier)
+
+
+
+
+
+
+
+
+
+<br>
+\
+
+# Contexte 
+
+On cherche à savoir si le PGD est stationnaire. Si oui, alors :
+
+- $E(y)$ ne dépend pas du temps\
+- $Var(y)$ finie\
+- Autocovariance entre $Y_t$ et $Y_{t-h}$
+
+S'il n'est pas stationnaire, on change la série pour qu'elle le devienne et qu'on puisse faire notre estimation. Pour savoir s'il est stationnaire, on fait des tests de racines unitaires. 
+
+Tendance TS : $X_t = \alpha_0 + \alpha_1 X_{t-1} + \varepsilon_t$
+
+Tendance DS : $X_t = X_{t-1} + \varepsilon_t$
+
+
+
+
+
+
+<br>
+\
+
+# Introduction
+
+Quel estimateur utiliser pour estimer $y_t = \beta_0 + \beta_1 x_t + \varepsilon_t$ ?
+
+- Pour un PGD stationnaire, MCO ok. 
+
+- Si $x_t$ et $y_t$ sont DS, alors elles peuvent être cointégrées si c'est le cas --> MCE (modèle à correction d'erreurs, pour 2 séries uniquement). Si elles ne sont pas cointégrées (MCE impossible), mais quand même DS, alors on doit stationnariser les 2 séries et on emploie les MCO sur les séries stationnarisées. 
+
+<br>
+\
+
+### Première étape : créer un chronogramme de la série étudiée
+
+On cherche à détecter la présence (ou non) de 3 effets :
+
+**Tendance**\
+Pour savoir si une série a une tendance, on compare le premier et le dernier point et on regarde si la tendance est haussière ou baissière. On regarde ensuite si la série fluctue autour d'une valeur, nulle ou non.
+
+**Effets saisonniers**\
+On cherche à savoir si la série à des effets saisonniers (qui se reproduisent tous les ans). Cet effet doit se répéter plusieurs fois dans l'année et graphiquement doit se repérer par des pics réguliers. Si on en détecte, on les enlève pour la modélisation et on les remet à la fin. 
+
+**Hétéroscédasticité**\
+Est ce que la variance varie dans le temps ? On essaie d'insérer toutes les valeurs de la série entre 2 droites, et si ces dernières sont parallèles, alors la variance est finie (homoscedasticité).
+
+On distingue 2 types de modèles
+
+Modèle additif\
+$x_t = m_t + s_t + u_t$
+
+Modèle multiplicatif\
+$x_t = m_t s_t u_t$
+
+Avec :\
+- $m_t$ la tendance\
+- $s_t$ l'effet saisonnier\
+- $u_t =$ un bruit où $E(u_t) = 0$\
+
+<br>
+\
+
+### Exemple d'une série temporelle
+
+
+```{r fig.width=10, message=FALSE, warning=FALSE, include=FALSE}
+library(urca)
+library(ggplot2)
+library(dygraphs)
+library(xts)          
+library(tidyverse)
+library(lubridate)
+library(hrbrthemes)
+library(dplyr)
+library(patchwork)
+library(scales)
+library(TSA)
+```
+
+##### Chronogramme de la température moyenne à Delhi entre 2013 et 2017
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=10}
+data = read.csv("climate.csv")
+serie = data$meantemp
+
+don = xts(x = serie, order.by = as.Date(data$date))
+p = dygraph(don) %>%
+  dyOptions(labelsUTC = TRUE, fillGraph=TRUE, fillAlpha=0.1, drawGrid = FALSE, colors="#D8AE5A") %>%
+  dyRangeSelector() %>%
+  dyCrosshair(direction = "vertical") %>%
+  dyHighlight(highlightCircleSize = 5, highlightSeriesBackgroundAlpha = 0.2, hideOnMouseOut = FALSE)  %>%
+  dyRoller(rollPeriod = 1)
+p
+```
+
+
+
+\
+<br>
+
+##### Décomposition de : l'effet saisonnier, la tendance et le bruit
+
+Pour cela, on lisse notre série en calculant les moyennes mobiles puis en les retirant de cette dernière. Ensuite, l'effet saisonnier est calculée en faisant la moyenne, pour chaque unité de temps, de toutes les périodes. L"effet saisonnier est ensuite centrée. Enfin, le bruit est déterminée en supprimant la tendance et l'effet saisonnier de la série originale.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=15}
+
+decomposition = decompose(ts(serie, deltat = 1/365), type = "additive")
+
+time = as.Date(data$date)
+season = decomposition$seasonal
+trend = decomposition$trend
+random = decomposition$random
+decomp = data.frame(time, season, trend, random)
+
+plot1 = ggplot(decomp, aes(x=time, y=trend)) +
+  ggtitle("Trend") + geom_line(col="green") + theme_ipsum()
+plot1
+
+plot2 = ggplot(decomp, aes(x=time, y=season)) +
+  ggtitle("Season effect") + geom_line(col="darkblue") + theme_ipsum()
+plot2
+
+plot3 = ggplot(decomp, aes(x=time, y=random)) +
+  ggtitle("Randomness") + geom_line(col="red") + theme_ipsum()
+plot3
+``` 
+
+
+Le graphique de décomposition met en lumière la tendance haussière de la série sur la période donnée. On retrouve également un fort effet saisonnier sur les températures moyennes : des valeurs élevées en été et plus faibles en hiver. Les effets sont bien saisonniers étant donné que la fréquence des cycles est égale à la durée en année de la série : 4. 
+
+
+
+Simuler un AR, MA ou ARMA
+
+```{r}
+
+```
+
+
+
+
+```{r}
+bb = rnorm(150)
+plot.ts(bb, col="darkblue")
+abline(h=max(bb), col="red")
+abline(h=mean(bb), col="green")
+abline(h=min(bb), col="red")
+abline(v=37, col="yellow")
+
+acf(bb, )
+```
+
+
+
+
+
+
+```{r}
+ts = arima.sim(list(order=c(1,0,0), ar=0.9), n=500)
+acf(ts[200:500])
+pacf(ts[200:500])
+```
+
+
+on test lunj box de l'ordre 1 à m, où m est le premier test significatif. On ne continue pas après car on aura tous les tests suivants significatifs = pas d'information supplémentaire 
+```{r}
+ts = rnorm(n=10000)
+Box.test(ts, lag = 3, type = "Ljung-Box")
+```
+
+$$AR(2): f_t = 0.42f_{t-2} + \varepsilon_t$$
+$$ \varepsilon_t= - 0.42L^2 + 1 $$
+$$\Delta = b^2 - 4\times a \times c = 0 - 4 \times -0.42 = 1.68$$
+$$r_1 = \frac{-0 - \sqrt{1.68}}{2} \approx -0.65$$
+$$r_2 = \frac{-0 + \sqrt{1.68}}{2} \approx 0.65$$
+$$\mid z \mid = 0.65$$
+
+
+
+
+```{r}
+df = ts(read.csv("serievendredi.csv"), freq=12, start=1950.1)
+mean(df)
+sd(df)
+plot.ts(df)
+eacf(df)
+x = acf(df)
+x$acf[1:3]
+```
+
+
+```{r}
+library(forecast)
+library(lmtest)
+
+#ARMA avec p=2 et p=3, et m=1 et m=2 (fixed permet d'enlever l'ar1)
+reg = Arima(df, order=c(3,0,3), fixed=c(0, NA, NA, NA, NA, NA, NA))
+coeftest(reg)
+hist(df, breaks = 25, col = "lightblue")
+plot(density(df))
+```
+
+
+Test sur les résidus
+
+```{r}
+library(tseries)
+jarque.bera.test(reg$residuals) #test de normalité
+
+library(moments)
+agostino.test(reg$residuals)
+anscombe.test(reg$residuals)
+
+Box.test(reg$residuals, )
+```
+Si les résidus ne sont pas normalement distribués, les conclusions tirées sur la significativité des coef ne sont plus significatifs. IC à 95% autour des valeurs prévues. PLus ce dernier est petit, plus les prévisions sont précises. 
+
+SI autocorrélation (box test) à l'ordre 1, alors PAS BESOIN de faire des tests à un ordre supérieur (perte de points si incohérence). On doit alors refaire un test à un ordre plus élevé. 
+
+
+
+
+
+
+
+
+
+
+Test d'hétéroscédasticité conditionnelle de ARCH
+
+Un arch(1) c'est quand la variance prévue à la date t dépend des aléas de t-1. 
+
+```{r}
+library(caschrono)
+data(indbourse)
+cac = as.numeric(indbourse[,5])
+rt = diff(log(cac), rt=na.omit(rt))
+plot.ts(rt)
+
+library(FinTS)
+ArchTest(rt, lags = 1)
+```
+A priori : pas d'effet arch sur les données annuelles car cela concerne plutot un effet qui sé déroule sur plusieurs jours. Meme chose que le box test : si effet arch à l'ordre 1, alors on en trouvera forcément à l'ordre 1+k. 
+
+
+
+
+
+Prévision
+
+```{r}
+prev = forecast(reg, h=8, level=0.95)
+plot(prev)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+\
+\
+\
+\
+\
+<br>
+<br>
+<br>
+<br>
+
+
