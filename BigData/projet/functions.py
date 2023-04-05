@@ -16,7 +16,8 @@ def clean_libelle(libelle):
     accents = {'É': 'E', 'È': 'E', 'À': 'A'}
     for accent, lettre in accents.items():
         libelle = libelle.replace(accent, lettre)
-    libelle = re.sub(r'\bADJ\b', 'ADJOINT', libelle)
+    libelle = re.sub(r'(^|\b)ADJ\b', r'\1ADJOINT', libelle)
+    libelle = re.sub(r'\bAGT\b', 'AGENT', libelle)
     libelle = re.sub(r'\bCL\b', 'CLASSE', libelle)
     libelle = re.sub(r'\bSUP\b', 'SUPERIEUR', libelle)
     libelle = re.sub(r'\bINF\b', 'INFIRMIER', libelle)
@@ -25,6 +26,10 @@ def clean_libelle(libelle):
     libelle = re.sub(r'\bTECHN\b', 'TECHNIQUE', libelle)
     libelle = re.sub(r'\bADM\b', 'ADMINISTRATIF', libelle)
     libelle = re.sub(r'\bADMI\b', 'ADMINISTRATIF', libelle)
+    libelle = re.sub(r'\bADMINIS\b', 'ADMINISTRATIF', libelle)
+    libelle = re.sub(r'\bADMIN\b', 'ADMINISTRATIF', libelle)
+    libelle = re.sub(r'\b1ERE\b', 'PREMIERE', libelle)
+    libelle = re.sub(r'\b2EME\b', 'DEUXIEME', libelle)
     libelle = libelle.strip()
     return libelle
 
