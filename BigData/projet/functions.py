@@ -20,6 +20,8 @@ def clean_libelle(libelle):
     libelle = re.sub(r'\bAGT\b', 'AGENT', libelle)
     libelle = re.sub(r'\bCL\b', 'CLASSE', libelle)
     libelle = re.sub(r'\bSUP\b', 'SUPERIEUR', libelle)
+    libelle = re.sub(r'\bLABO\b', 'LABORATOIRE', libelle)
+    libelle = re.sub(r'\bPUER\b', 'PUERICULT', libelle)
     libelle = re.sub(r'\bINF\b', 'INFIRMIER', libelle)
     libelle = re.sub(r'\bTEC\b', 'TECHNIQUE', libelle)
     libelle = re.sub(r'\bTECH\b', 'TECHNIQUE', libelle)
@@ -60,3 +62,12 @@ def approxim_libelle(lib_ind, set_nomenclature):
         best = sorted(similarities.items(), key=lambda x: x[1], reverse=True)
         print(f"{lib_ind} --> {best[0][0]}")
         #return best[0][0
+        
+
+    
+def remplacer_code(df_base, df_nomenclature, code, libelle):
+    dict_nomenclature = dict(zip(df_nomenclature[libelle],df_nomenclature[code]))
+    df_base[code] = df_base[libelle].map(dict_nomenclature).fillna(df_base[code])
+    return df_base
+
+
