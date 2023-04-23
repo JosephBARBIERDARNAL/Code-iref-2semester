@@ -1,0 +1,658 @@
+---
+title: "Série temporelle : taux d'épargne des Pays-Bas depuis 1969"
+author: "Barbier--Darnal Joseph"
+output: pdf_document
+---
+
+# Introduction
+
+### A propos des Pays-Bas
+
+Les deux crises pétrolières des années 70 ont provoqué une flambée des prix de l'énergie, une inflation élevée et une récession économique mondiale. Les pays occidentaux ont cherché à diversifier leurs sources d'énergie et à améliorer l'efficacité énergétique pour réduire leur dépendance au pétrole étranger. Malgré la découverte du gisement de Groningue au nord des Pays-Bas en 1959, impliquant une explosion de la production de gaz naturel jusqu'en 1977 au sein du pays$^1$, les crises pétrolières prouvèrent l'importance des hydrocarbures, ne permettant pas aux Pays-Bas d'échapper à la règle. 
+
+La découverte du gisement de Groningue a également  fait apparaître le terme de "*mal hollandais*", désignant l'impact de l'exploitation de ressources naturelles sur l'industrie manufaturière locale. Le fort accroissement des recettes d'exportations de gaz naturel provoqua une forte appréciation de la devise hollandaise, nuisant alors à la compétitivité-prix des exportations non liées au gaz naturel des Pays-Bas$^2$. 
+
+Aujourd'hui, les Pays-Bas profitent fortement des échanges commerciaux internationnaux, notamment grâce au domaine agricole/maraîcher et sont une place financière mondiale, s'illustrant par les performances similaires de l'AEX index (25 plus grosses capitalisations des entreprises néerlandaises) et le Dow Jones ou le CAC 40. Les Pays-Bas sont aussi parfois qualifiés de "paradis fiscal qui ne dit pas son nom", en permettant par exemple à l'entreprise Nike de ne payer que 2% d'impôts sur les bénéfices grâce à sa filiale locale. 
+
+En résumé, l'économie hollandaise a évolué de manière significative au fil des ans, passant d'une économie agricole à une économie manufacturière et de services avancés et diversifiés, avec une ouverture accrue aux marchés internationaux.
+
+### Données du taux d'épargne
+
+Les données utilisées ici représentent le taux d'épargne annuel des Pays-Bas entre 1969 et 2021, en pourcentage du PIB. On affiche ici les premières valeurs de cette série.
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+setwd("/Users/josephbarbier/Desktop/M1S2/série temp/projet")
+rm(list=ls())
+
+#packages
+library(readxl)
+library(ggplot2)
+library(dplyr)
+library(plotly)
+library(urca)
+library(stats)
+library(fpp2)
+library(forecast)
+library(lmtest)
+library(TSA)
+library(tseries)
+library(knitr)
+library(CADFtest)
+library(foreach)
+library(doSNOW)
+library(parallel)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+#open series about Netherlands saving rate
+savings = t(read_excel("taux-epargne.xls"))
+colnames(savings) = paste(as.character(savings[1,]),as.character(savings[2,])) 
+
+#keep only information needed
+savings = as.data.frame(savings[-c(1,2),])
+savings = subset(savings, select = c("Netherlands NLD", "Country Name Country Code"))
+
+#change index and column names
+colnames(savings) = c("Saving rate", "Date")
+savings = subset(savings, Date > 1968)
+rownames(savings) = 1:nrow(savings)
+
+#converting to time series
+savings$Date = as.integer(savings$Date)
+savings$`Saving rate` = as.numeric(savings$`Saving rate`)
+ts = ts(savings$`Saving rate`, freq=1, start=1969)
+
+temp_df = round(savings,2)
+kable(t(head(temp_df, n = 8)))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+\newpage
+
+# Description de la série
+
+### Statistiques descriptives
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, results = 'asis'}
+cat("Moyenne sur la période :", round(mean(ts),2), "\n")
+cat("\n")
+cat("Medianne sur la période :", round(median(ts),2), "\n")
+cat("\n")
+cat("Ecart-type sur la période :", round(sd(ts),2))
+```
+
+Une moyenne et une médianne proches peut suggérer une distribution symétrique et donc, éventuellement, une distribution normale pour la série. On décide d'afficher l'histogramme des valeurs de la série afin d'obtenir une information supplémentaire sur la distribution.
+
+### Estimation de la densité par noyau du taux d'épargne des Pays-Bas
+
+###### (sur la période 1969-2021)
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=12, fig.align='center', fig.height=8}
+savings %>%
+  ggplot( aes(x=`Saving rate`)) +
+    geom_density(fill="#69b3a2", color="#e9ecef", alpha=0.8) +
+    theme_classic() +
+    ggtitle("")
+```
+
+\
+
+La distribution de la série temporelle du taux d'épargne de la Hollande entre 1969 et 2021 semble être légèrement asymétrique vers la droite. L'écart-type de 2.21 suggère que les valeurs sont relativement regroupées autour de la moyenne, bien que certains points de données soient assez éloignés de la moyenne, notamment supérieurs. Cela peut indiquer une certaine variabilité dans les comportements d'épargne des ménages hollandais au fil du temps.
+
+\newpage
+
+### Chronogramme du taux d'épargne des Pays-Bas
+
+###### (sur la période 1969-2021)
+
+```{r echo=FALSE, fig.align='center', fig.height=8, fig.width=12, message=FALSE, warning=FALSE}
+savings %>% 
+  ggplot(aes(x=Date, y=`Saving rate`)) +
+    geom_line(color="#69b3a2") +
+    ylim(20,33) +
+    annotate(geom="text", x=1974, y=30.5, label="Première crise pétrolière") +
+    annotate(geom="point", x=1973, y=30, size=10, shape=21, fill="transparent") +
+    annotate(geom="text", x=1976.5, y=23.5, label="Deuxième crise pétrolière") +
+    annotate(geom="point", x=1978, y=22.8, size=10, shape=21, fill="transparent") +
+    geom_hline(yintercept=median(savings$`Saving rate`), color="orange", size=.5) + 
+    geom_segment(x = 2016, y = 23, xend = 2019, yend = 25.5, arrow = arrow(length = unit(0.3, "cm"))) +
+    annotate(geom="text", x=2015, y=22.5, label="Taux d'épargne médian au cours de la période") +
+    annotate(geom="point", x=2007, y=27, size=10, shape=21, fill="transparent") +
+    annotate(geom="text", x=2007, y=27.5, label="Crise des subprimes") +
+    theme_bw()
+```
+
+\
+
+Le taux d'épargne de la Hollande s'est vu diminué durant l'entièreté des années 70, notamment en suivant de la première crise pétrolière. Au global, la tendance est légèrement baissière. 
+
+On peut remarquer le taux d'épargne, après la deuxième crise pétrolière, a eu du mal a dépassé la valeur médianne de la période. Cependant, depuis 2010, il est resté au dessus. 
+
+
+
+
+
+
+
+
+
+\newpage
+
+# Sommaire
+
+### 1 - Stationnarité de la série
+
+### 2 - Détection d’autocorrélation
+
+### 3 - Modélisation d’un ARMA(p,q)
+
+### 4 - Tests sur les résidus
+
+### 5 - Prévision
+
+### 6 - Références
+
+### 7 - Annexe
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+\newpage
+
+# 1 - Stationnarité de la série
+
+On cherche à savoir si le PGD générateur de nos données est stationnaire. 
+
+### Test de Dickey-Fuller
+
+Dans le modèle suivant : 
+$$\Delta X_t = (\rho-1)X_{t-1} + \beta_0 + \beta_1 tendance_t + \varepsilon_t$$
+
+On cherche à tester l'hypothèse suivante :
+
+- H$_0$ : $\rho -1 = 0$ et  $\beta_1 =0$
+- H$_1$ : $\mid \rho \mid < 1$ et $\beta_1 \neq 0$
+
+Sous $H_0$, la statistique associée à $\beta_1$ suit une loi de Student à $n-k-1$ degrés de liberté. Pour la statistique associée à $\rho -1$, on compare cette dernière aux valeurs critiques calculées par Dickey et Fuller. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+summary(ur.df(ts, type = "trend", lags = 0))
+```
+
+\
+
+La valeur de $\beta_1$ est significativement différente de $0$ ($p<0.05$). On conlut alors à la présence d'une tendance dans la série. Egalement, la statistique associée à $\rho-1$ étant supérieure à la valeur critique au seuil de risque de $5\%$ ($-3.2821 > -3.45$), on accepte l'hypothèse nulle de présence d'une racine unitaire. Le PGD est alors DS. 
+
+On cherche maintenant à savoir s'il y a de l'autocorrélation dans les résidus de ce modèle afin de vérifier la validation des conclusions précédentes. 
+
+```{r echo=FALSE, fig.align='center', message=FALSE, warning=FALSE}
+plot(ur.df(ts, type = "trend", lags = 0))
+```
+
+On remarque ici la présence d'autocorrélation et d'autocorrélation partielle dans les résidus du modèle, ce qui rend invalide les résultats du test de Dickey-Fuller précédent. On réalise alors le test de Dickey-Fuller Augmenté, en ajoutant des variables explicatives afin de prendre en compte cette autocorrélation. 
+
+\
+
+### Test de Dickey-Fuller Augmenté
+
+La nouvelle spécification du modèle devient (au retard $p$)
+$$X_t = (\rho-1) X_{t-1} + \beta_0 + \beta_1 tendance_t + \sum_{j=1}^p\gamma_j\Delta_{X_{t-j}} + \varepsilon_t$$
+
+
+```{r echo=TRUE, fig.align='center', message=FALSE, warning=FALSE}
+pmax = as.integer(12*(length(ts)/100)^(0.25)) #formule de Schwert
+summary(CADFtest(ts, criterion="MAIC", type="trend", max.lag.y=pmax))
+```
+
+\
+
+Comme la valeur donnée par `R` pour `Max lag of the diff. dependent variable` est de $0$, on utilise le critère du $BIC$ dans le test de Dickey-Fuller avec `pmax` explicatives supplémentaires au maximum. 
+
+```{r echo=TRUE, fig.align='center', message=FALSE, warning=FALSE}
+summary(ur.df(ts, type = "trend", lags = pmax-1, selectlags = "BIC"))
+```
+
+La valeur absolue de la statistique associé à $\mid\gamma_9\mid$ (1.721) étant supérieure à $1.6$, on garde cette spécification. On conlut également que $\beta_1$ est différent de $0$ ($p<0.05$). La statistique associée à $\rho-1$ étant supérieure à celle calculée tabulée ($-2.493 > -3.45$), on conclut que le PGD est DS et on accepte l'hypothèse nulle de présence d'une racine unitaire. 
+
+On vérifie qu'il n'y a plus d'autocorrélation dans les résidus. 
+
+```{r echo=TRUE, fig.align='center', message=FALSE, warning=FALSE}
+plot(ur.df(ts, type = "trend", lags = pmax-1))
+```
+
+Les conclusions du test de Dickey-Fuller étant valides, la bonne spécification du modèle s'écrit alors
+$$X_t = (\rho-1)X_{t-1} + \beta_0 + \beta_1 tendance_t + \sum_{j=1}^9\gamma_j\Delta_{X_{t-j}} + \varepsilon_t$$
+
+### Test de Zivot et Andrews
+
+Pour la réalisation de ce test, on propose le modèle suivant 
+$$X_t = \beta_0 + \beta_1t + \rho X_{t-1} + \delta_1 DU_t(T_B) + \delta_2 DT_t(T_B) + \sum_{j=1}^p\gamma_j\Delta_{X_{t-j}} + \varepsilon_t$$
+
+On cherche à tester l'hypothèse suivante :
+
+- H$_0$ : $\rho = 1$ (DS sans changement structurel)
+- H$_1$ : $\mid \rho \mid < 1$ (TS avec un unique changement structurel)
+
+On compare la valeur de la statistique calculée par rapport à celle critique donnée par `R`. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+summary(ur.za(ts, model="intercept", lag=pmax-1))
+```
+
+Seul $\delta_1$ est significatif, avec $\gamma_9$ le dernier coefficient significatif. On garde donc la spécification suivante
+$$X_t = \beta_0 + \beta_1t + \rho X_{t-1} + \delta_1 DU_t(T_B) + \sum_{j=1}^9\gamma_j\Delta_{X_{t-j}} + \varepsilon_t$$
+
+Comme la statistique calculée est supérieure à la valeur critique ($-4.2523 > -4.8$), on accepte $H_0$ : DS sans changement structurel. 
+
+### Test de Lee et Strazicich
+
+On cherche maintenant à tester s'il y a un changement structurel, avec $2$ `breaks` possibles. Dans l'équation :
+$$\Delta y_t = \delta' \Delta Z_t + \phi (y_{t-1} - \psi_X - Z_{t-1}\delta') + u_t$$
+
+On teste l'hypothèse suivante :
+
+- H$_0$ : $\phi = 0$ (DS avec date de rupture dans la constante)
+- H$_1$ : $\phi \neq 0$ (TS avec un changement structurel)
+
+Comme la bonne spécification du test de Zivot et Andrews est *"crash"*, on la garde pour ce test également. On ajoute $pmax-5$ explicatives car c'est la plus grande valeur possible ne posant pas un problème d'inversion de matrice. 
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+source("~/Desktop/M1S2/série temp/LeeStrazicichUnitRoot-master/LeeStrazicichUnitRootTest.R", encoding = 'UTF-8')
+source("~/Desktop/M1S2/série temp/LeeStrazicichUnitRoot-master/LeeStrazicichUnitRootTestParallelization.R", encoding = 'UTF-8')
+```
+
+```{r echo=TRUE, warning=FALSE}
+cl = makeCluster(max(1, detectCores() - 1))
+registerDoSNOW(cl)
+myLS_test = ur.ls.bootstrap(y=ts, model="crash", breaks=1, lags=pmax-5,
+                            method="GTOS", critval="bootstrap", print.results="print")
+```
+
+Comme la valeur de la statistique calculée est supérieure à celle critique à $5\%$ ($-2.089789 > -3.566$), on accepte $H_0$ et on conclut que le PGD est DS. 
+
+```{r echo=TRUE, warning=FALSE}
+cl = makeCluster(max(1, detectCores() - 1))
+registerDoSNOW(cl)
+myLS_test = ur.ls.bootstrap(ts, model="crash", breaks=2, lags=pmax-5,
+                            method="GTOS", critval="bootstrap", print.results="print")
+```
+
+Comme la valeur de la statistique calculée est supérieure à celle critique ($-2.825383 > -5.67$), on accepte $H_0$ et on conclut que le PGD est DS avec date de rupture dans la constante en $2005$ (position $37$ issue du test avec une date de rupture).
+
+### Stationnarisation de la série
+
+Notre série étant DS, on la stationnarise en la différenciant. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+ts_diff = diff(ts)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+savingsDiff = savings[2:nrow(savings),]
+savingsDiff$SavingDiff = ts_diff
+savingsDiff %>% 
+  ggplot(aes(x=Date, y=SavingDiff)) +
+    geom_line(color="darkblue") +
+  theme_bw() +
+  ggtitle("Taux d'épargne de la Hollande différencié à l'ordre 1")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+\newpage
+
+# 2 - Détection d'autocorrélation
+
+On cherche à savoir si notre série est autocorrélée, et si oui, à quel(s) ordre(s). 
+
+### Fonction d'autocorrélation
+
+```{r echo=TRUE, fig.align='left', message=FALSE, warning=FALSE, fig.width=7, fig.height=3}
+ggAcf(ts_diff) + theme_bw() + ggtitle("")
+```
+
+D'après le graphique de l'ACF, notre série est autocorrélée à l'ordre 2, 9 et 11. Cette information nous ait donnée par le fait que l'autocorrélation à ces ordres dépasse le seuil statistique donné (ici $\alpha = 5\%$). On peut alors envisager une $MA(11)$ pour cette série.
+
+\
+
+### Fonction d'autocorrélation partielle 
+
+```{r echo=TRUE, fig.align='left', message=FALSE, warning=FALSE, fig.width=7, fig.height=3}
+ggPacf(ts_diff) + theme_bw() + ggtitle("")
+```
+
+Lorsque l'on s'intéresse à l'autocorrélation partielle, et donc en prenant en compte les termes d'un décalage inférieur, la PACF nous indique que la série est partiellement autocorrélée aux ordres $2$, $9$ et $14$. On peut alors envisager un $AR(14)$. 
+
+### Test d'autocorrélation de Ljung-Box
+
+On cherche à trouver les ordres pour lesquels notre série est autocorrélée. Pour cela, on effectue le test :
+
+- H$_0$ : $\rho(1) = \rho(2) = \dots = \rho(K) =0$
+- H$_1$ : Au moins un des $\rho(k) \neq 0$
+
+La statistique de test utilisée est :
+$$Q_K = T(T+1) \sum_{k=1}^{K} \frac{\hat\rho(k)^2}{T-k}$$
+
+Sous H$_0$, la statistique $Q_K$ suit asymptotiquement un $\chi^2$ à $K$ degrés de liberté.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+Box.test(ts_diff, lag = 9, type = "Ljung-Box")
+```
+
+Notre série est autocorrélée à l'ordre $9$. On n'effectue pas d'autres tests à des ordres plus élevés puisque ces derniers seront également significatifs et n'apportent donc aucune nouvelle information. 
+
+\
+
+### EACF pour les $p$ et $q$ de départ du modèle ARMA(p,q)
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+eacf(ts_diff)
+```
+
+D'après les résultats de l'EACF, on peut envisager  $AR(2)$. 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+\newpage
+
+# 3 - Modélisation d'un ARMA(p,q)
+
+On part d'un modèle ARMA(9,9) et on enlève, un à un, les coefficients non-significatifs jusqu'à tous soient significatifs. 
+
+Le modèle décrit ci-dessous est le modèle avec le plus faible `BIC` et ayant tous ses coefficients significativement différents de $0$. Ce modèle sera celui utilisé pour la prévision plus bas. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+model = Arima(ts_diff, order=c(9,0,9), include.mean=FALSE,
+              fixed=c(NA, NA, 0, NA, NA, 0, NA, NA, 0, 0, NA, 0, NA, NA, 0, NA, NA, NA))
+coeftest(model)
+```
+
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, results = 'asis'}
+bic = BIC(model)
+cat("BIC du modèle, avec tous les coefficients significatifs :", bic)
+```
+
+## Equation du modèle estimé
+
+$$\hat X_t = -0.13X_{t-1} - 1.04X_{t-2} -0.48X_{t-4} + 0.72X_{t-5} + 0.76X_{t-7} + 0.18X_{t-8}$$
+$$+ 1.41\varepsilon_{t-2} + 1.01\varepsilon_{t-4} - 1.22\varepsilon_{t-5} - 1.1\varepsilon_{t-7} - 0.46\varepsilon_{t-8} - 0.55\varepsilon_{t-9}$$
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+\newpage
+
+# 4 - Tests sur les résidus
+
+On cherche à vérifier si les résidus issus de notre modèle sont des bruits blancs gaussiens. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+residuals = model$residuals
+```
+
+### Test d'espérance nulle
+
+Afin de déterminer si l'espérance des aléas est nulle, on utilise la moyenne des résidus, notée $m(e)$, et on calcule un $t$ de Student. Le test effectué est le suivant :
+
+- H$_0$ : $E(\varepsilon_t) = 0$
+- H$_1$ : $E(\varepsilon_t) \neq 0$
+
+La statistique de test utilisée est :
+$$t = \frac{\mid m(e) \mid}{\sigma_e} \times \sqrt{T}$$
+
+Sous H$_0$, la statistique $t$ suit asymptotiquement une $N(0,1)$.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+t.test(residuals)
+```
+
+Etant donné que $p>0.05$, on ne rejette pas l'hypothèse nulle d'espérance des aléas nulle. 
+
+### Test d'autocorrélation de Ljung-Box
+
+On cherche à savoir si notre modèle $ARMA(2,2)$ prend bien en compte toute l'autocorrélation de la série. S'il en reste dans les résidus, alors notre modèle modélise mal nos données et doit être ré-estimé. 
+
+On effectue le test suivant :
+
+- H$_0$ : $\rho(1) = \rho(2) = \dots = \rho(K) =0$
+- H$_1$ : Au moins un des $\rho(k) \neq 0$
+
+La statistique de test utilisée est :
+$$Q_K = T(T+1) \sum_{k=1}^{K} \frac{\hat\rho(k)^2}{T-k}$$
+
+Sous H$_0$, la statistique $Q_K$ suit asymptotiquement un $\chi^2$ à $K$ degrés de liberté.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+Box.test(residuals, lag = 15)
+```
+
+Aucune valeur de `lag` permet la conclusion de présence d'autocorrélation dans les résidus. On conclut alors que cette dernière est bien prise en compte par le modèle. 
+
+### Test de normalité
+
+Afin de savoir si les conclusions tirées sur nos coefficients estimés sont valides, on cherche à savoir si les aléas sont normalement distribués. Pour cela, on effectue un test de Jarque-Bera sur les résidus. On test alors :
+
+- H$_0$ : normalité des données
+- H$_1$ : non-normalité des données
+
+La statistique de test utilisée est :
+$$JB = \frac{n-k}{6}\times (S^2 + \frac{(K-2)^2}{4})$$
+avec $S$ le coefficient d'asymétrie (*skewness*) et $K$ le coefficient d'applatissement (*kurtosis*).
+
+Sous H$_0$, la statistique $JB$ suit asymptotiquement un $\chi^2$ à $2$ degrés de liberté.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+jarque.bera.test(residuals)
+```
+
+La p-value associée à la valeur de test étant supérieure au seuil de $5\%$, on accepte l'hypothèse nulle de normalité des données.
+
+### Conclusion sur les résidus
+
+Les résidus du modèle estimé étant des bruits blancs gaussiens, on peut utiliser notre modèle pour faire des inférences et utiliser l'intervalle de confiance associé.  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+\newpage
+
+# 5 - Prévision
+
+### Prédiction sur 5 ans, de 2022 à 2026, avec intervalle de confiance à 95%
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+#on definit la prévision
+h = 5
+prev = forecast(model, h=h, level=0.95)
+prev = data.frame(prev)
+prev$Date = rownames(prev)
+names(prev)[1] = "ts_diff"
+
+#df complet
+ts_diff = as.numeric(ts_diff)
+df_all = data.frame(ts_diff)
+df_all$Lo.95 = NA
+df_all$Hi.95 = NA
+df_all$Date = seq(1970,2021)
+df_all = rbind(df_all, prev)
+df_all$Date = as.integer(df_all$Date)
+
+#definition de la zone d'IC
+last = tail(df_all, h)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.align='center'}
+df_all %>%
+  ggplot(aes(x=Date, y=ts_diff)) +
+  geom_line() +
+  geom_ribbon(data = last, aes(x = Date, ymin = Lo.95, ymax = Hi.95), fill = "lightblue", alpha = 0.5) +
+  xlab("Date") +
+  ylab("Value") +
+  theme_bw()
+```
+
+Les résidus étant des bruits blancs gaussiens, on peut alors utiliser la valeur de l'intervalle de confiance. Voici les variations attendues du taux d'épargne de la Hollande :
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
+for (i in seq(1,h)){
+  cat("Prédiction pour", last$Date[i], "(de la série différenciée) :",
+      round(last$ts_diff[i],2), "(95% IC : [", round(last$Lo.95[i],2), ",", round(last$Hi.95[i],2), "])\n\n")
+}
+```
+
+
+
+
+
+
+\newpage
+
+# 6 - References
+
+Les liens sont cliquables. 
+
+1. [Natural gas balance sheet; supply and consumption](https://opendata.cbs.nl/statline/#/CBS/en/dataset/00372eng/table?ts=1550090436913)
+
+2. [Corden, W. M., & Neary, J. P. (1982). Booming sector and de-industrialisation in a small open economy. The economic journal, 92(368), 825-848.](https://academic.oup.com/ej/article/92/368/825/5220457)
+
+
+
+
+
+
+
+\newpage
+
+# 7 - Annexe 
+
+### Test de Dickey-Fuller avec critère de sélection BIC
+
+```{r echo=TRUE, fig.align='center', message=FALSE, warning=FALSE}
+summary(ur.df(ts, type = "trend", lags = pmax, selectlags = "BIC"))
+plot(ur.df(ts, type = "trend", lags = pmax, selectlags = "BIC"))
+```
+
+Cette spécification ne permettant pas de prendre en compte toute l'autocorrélation présente dans les résidus, on ne la conserve pas. 
+
+### Test de Zivot-Andrews avec spécification "both"
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+summary(ur.za(ts, model="both", lag=pmax-1))
+```
+
+La statistique associée à $DT$ n'étant pas significative ($p>0.05$), on ne garde pas cette spécification. 
+
+### Test d'autocorrélation de Ljung-Box
+
+On effectue le test de Ljung-Box jusqu'au premier test significatif, en augmentant le lag de $1$ à chaque fois. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+lag = 1
+repeat {
+  LJ.test = Box.test(ts, lag = lag, type = "Ljung-Box")
+  if (LJ.test$p.value < 0.05) {
+    break
+  } else {
+    lag = lag + 1
+  }
+}
+print(LJ.test)
+cat("Premier lag significatif :", lag)
+```
+
+### Modèle ARMA testés
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+model = Arima(ts_diff, order=c(9,0,9), include.mean=TRUE)
+coeftest(model)
+```
+
+Pour déterminer les valeurs de $p$ et $q$, enlève le coefficient avec la p-value associée la plus élevée, jusqu'à ce que tous soient significatifs. Dans ce premier exemple, on retire l'intercept, puis on ré-estime le modèle. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+model = Arima(ts_diff, order=c(9,0,9), include.mean = FALSE)
+coeftest(model)
+```
+
+Ici, on retire le coefficient associé à $X_{t-3}$, et on ré-estime le modèle. 
