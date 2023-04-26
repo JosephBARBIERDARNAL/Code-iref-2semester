@@ -31,6 +31,7 @@ library(dplyr)
 library(plotly)
 library(urca)
 library(stats)
+library(FinTS)
 library(fpp2)
 library(forecast)
 library(lmtest)
@@ -236,7 +237,7 @@ Comme la valeur donnée par `R` pour `Max lag of the diff. dependent variable` e
 summary(ur.df(ts, type = "trend", lags = pmax-1, selectlags = "BIC"))
 ```
 
-La valeur absolue de la statistique associé à $\mid\gamma_9\mid$ (1.721) étant supérieure à $1.6$, on garde cette spécification. On conlut également que $\beta_1$ est différent de $0$ ($p<0.05$). La statistique associée à $\rho-1$ étant supérieure à celle calculée tabulée ($-2.493 > -3.45$), on conclut que le PGD est DS et on accepte l'hypothèse nulle de présence d'une racine unitaire. 
+La valeur absolue de la statistique associé à $\gamma_1$ (1.721) étant supérieure à $1.6$, on garde cette spécification. On conlut également que $\beta_1$ est différent de $0$ ($p<0.05$). La statistique associée à $\rho-1$ étant inférieure à celle calculée tabulée ($-3.9772 < -3.45$), on conclut que le PGD est TS : présence d'une tendance dans la série. 
 
 On vérifie qu'il n'y a plus d'autocorrélation dans les résidus. 
 
@@ -289,19 +290,19 @@ source("~/Desktop/M1S2/série temp/LeeStrazicichUnitRoot-master/LeeStrazicichUn
 cl = makeCluster(max(1, detectCores() - 1))
 registerDoSNOW(cl)
 myLS_test = ur.ls.bootstrap(y=ts, model="crash", breaks=1, lags=pmax-5,
-                            method="GTOS", critval="bootstrap", print.results="print")
+                            method="Fixed", critval="bootstrap", print.results="print")
 ```
 
-Comme la valeur de la statistique calculée est supérieure à celle critique à $5\%$ ($-2.089789 > -3.566$), on accepte $H_0$ et on conclut que le PGD est DS. 
+Comme la valeur de la statistique calculée est supérieure à celle critique à $5\%$ ($-1.673858 > -3.566$), on accepte $H_0$ et on conclut que le PGD est DS. 
 
 ```{r echo=TRUE, warning=FALSE}
 cl = makeCluster(max(1, detectCores() - 1))
 registerDoSNOW(cl)
 myLS_test = ur.ls.bootstrap(ts, model="crash", breaks=2, lags=pmax-5,
-                            method="GTOS", critval="bootstrap", print.results="print")
+                            method="Fixed", critval="bootstrap", print.results="print")
 ```
 
-Comme la valeur de la statistique calculée est supérieure à celle critique ($-2.825383 > -5.67$), on accepte $H_0$ et on conclut que le PGD est DS avec date de rupture dans la constante en $2005$ (position $37$ issue du test avec une date de rupture).
+Comme la valeur de la statistique calculée est supérieure à celle critique ($-1.904136 > -5.67$), on accepte $H_0$ et on conclut que le PGD est DS avec date de rupture dans la constante en $2005$ (position $37$ issue du test avec une date de rupture).
 
 ### Stationnarisation de la série
 
@@ -375,7 +376,7 @@ $$Q_K = T(T+1) \sum_{k=1}^{K} \frac{\hat\rho(k)^2}{T-k}$$
 Sous H$_0$, la statistique $Q_K$ suit asymptotiquement un $\chi^2$ à $K$ degrés de liberté.
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
-Box.test(ts_diff, lag = 9, type = "Ljung-Box")
+Box.test(ts_diff, lag = 4, type = "Ljung-Box")
 ```
 
 Notre série est autocorrélée à l'ordre $9$. On n'effectue pas d'autres tests à des ordres plus élevés puisque ces derniers seront également significatifs et n'apportent donc aucune nouvelle information. 
@@ -411,7 +412,7 @@ D'après les résultats de l'EACF, on peut envisager  $AR(2)$.
 
 # 3 - Modélisation d'un ARMA(p,q)
 
-On part d'un modèle ARMA(9,9) et on enlève, un à un, les coefficients non-significatifs jusqu'à tous soient significatifs. 
+On part décide de partir d'un modèle ARMA(9,9). On enlève, un à un, les coefficients non-significatifs jusqu'à tous soient significatifs. 
 
 Le modèle décrit ci-dessous est le modèle avec le plus faible `BIC` et ayant tous ses coefficients significativement différents de $0$. Ce modèle sera celui utilisé pour la prévision plus bas. 
 
@@ -420,8 +421,6 @@ model = Arima(ts_diff, order=c(9,0,9), include.mean=FALSE,
               fixed=c(NA, NA, 0, NA, NA, 0, NA, NA, 0, 0, NA, 0, NA, NA, 0, NA, NA, NA))
 coeftest(model)
 ```
-
-
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE, results = 'asis'}
 bic = BIC(model)
@@ -515,7 +514,23 @@ jarque.bera.test(residuals)
 
 La p-value associée à la valeur de test étant supérieure au seuil de $5\%$, on accepte l'hypothèse nulle de normalité des données.
 
-### Conclusion sur les résidus
+### Test de détection d'hétéroscédasticité
+
+On cherche à tester l'hétéroscédasticité conditionnelle d'après le test d'Engle$^3$. Dans le modèle suivant :
+$$\sigma^2_t = \alpha_0 + \alpha_1 \varepsilon^2_{t-1} \dots + \alpha_1 \varepsilon^2_{t-q}$$
+
+On cherche à tester l'hypothèse suivante :
+
+- $H_0$ : $\alpha_0 = \dots = \alpha_p$ 
+- $H_1$ : Au moins un des $\alpha_j \neq 0$
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+ArchTest(residuals, lags = 15)
+```
+
+Aucun lag ne permet la conclusion de présence d'effet ARCH dans les résidus. On conclut alors à l'homoscédasticité des résidus. 
+
+### Conclusion générale sur les résidus
 
 Les résidus du modèle estimé étant des bruits blancs gaussiens, on peut utiliser notre modèle pour faire des inférences et utiliser l'intervalle de confiance associé.  
 
@@ -596,6 +611,8 @@ Les liens sont cliquables.
 
 2. [Corden, W. M., & Neary, J. P. (1982). Booming sector and de-industrialisation in a small open economy. The economic journal, 92(368), 825-848.](https://academic.oup.com/ej/article/92/368/825/5220457)
 
+3. [Engle, R. F. (1982). Autoregressive conditional heteroscedasticity with estimates of the variance of United Kingdom inflation. Econometrica: Journal of the econometric society, 987-1007.](http://www.econ.uiuc.edu/~econ508/Papers/engle82.pdf)
+
 
 
 
@@ -630,7 +647,7 @@ On effectue le test de Ljung-Box jusqu'au premier test significatif, en augmenta
 ```{r echo=TRUE, message=FALSE, warning=FALSE}
 lag = 1
 repeat {
-  LJ.test = Box.test(ts, lag = lag, type = "Ljung-Box")
+  LJ.test = Box.test(ts_diff, lag = lag, type = "Ljung-Box")
   if (LJ.test$p.value < 0.05) {
     break
   } else {
@@ -656,3 +673,28 @@ coeftest(model)
 ```
 
 Ici, on retire le coefficient associé à $X_{t-3}$, et on ré-estime le modèle. 
+
+### Test d'Engle
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+lag = 1
+repeat {
+  if (lag > 20){
+    cat("Aucun résultat significatif malgré un lag > 20. Absence d'effet ARCH.")
+    break
+  }
+  Engle.test = ArchTest(residuals, lag = lag)
+  if (Engle.test$p.value < 0.05) {
+    print(Engle.test)
+    cat("Premier lag significatif :", lag)
+    break
+  } else {
+    lag = lag + 1
+  }
+}
+```
+
+On effectue le test de Arch jusqu'au premier test significatif. Aucun test ne permet la conclusion de la présence d'effet ARCH. On conclue à l'homoscédasticité des résidus. 
+
+
+
